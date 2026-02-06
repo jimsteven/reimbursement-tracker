@@ -723,10 +723,18 @@ function rtCheckDuplicate(data) {
         duplicates.push({
           reimbursementId: row[idx['ReimbursementID']],
           claimId: row[idx['ClaimID']] || null,
+          claimType: row[idx['ClaimType']] || null,
+          benefitType: row[idx['BenefitType']] || null,
           source: row[idx['Source']],
+          description: row[idx['Description']] || null,
           amountClaimed: parseFloat(row[idx['AmountClaimed']]) || 0,
+          amountApproved: parseFloat(row[idx['AmountApproved']]) || 0,
+          amountDisapproved: parseFloat(row[idx['AmountDisapproved']]) || 0,
           status: row[idx['Status']],
-          purchaseDate: row[idx['PurchaseDate']] ? new Date(row[idx['PurchaseDate']]).toISOString().split('T')[0] : null,
+          purchaseDate: safeFormatDate(row[idx['PurchaseDate']]),
+          submittedDate: safeFormatDate(row[idx['SubmittedDate']]),
+          approvedDate: safeFormatDate(row[idx['ApprovedDate']]),
+          receiptNumber: row[idx['ReceiptNumber']] || null,
           matchReason: matchReason
         });
       }
@@ -983,7 +991,9 @@ function rtGetSummary(data) {
 }
 
 /**
- * Update reimbursement status
+ * Update reimbursement - status and/or any other fields
+ * Supports updating: status, claimId, claimType, benefitType, description,
+ * amountApproved, amountDisapproved, approvedDate, submittedDate, paidDate, notes, receiptNumber
  */
 function rtUpdateStatus(data) {
   try {
@@ -997,12 +1007,9 @@ function rtUpdateStatus(data) {
     if (!data.reimbursementId) {
       return { success: false, error: 'reimbursementId is required' };
     }
-    if (!data.status) {
-      return { success: false, error: 'status is required' };
-    }
     
     const validStatuses = ['pending', 'approved', 'paid', 'rejected', 'expired', 'lacking', 'denied'];
-    if (!validStatuses.includes(data.status.toLowerCase())) {
+    if (data.status && !validStatuses.includes(data.status.toLowerCase())) {
       return { success: false, error: 'Invalid status. Must be one of: ' + validStatuses.join(', ') };
     }
     
@@ -1014,39 +1021,91 @@ function rtUpdateStatus(data) {
       if (allData[i][idx['ReimbursementID']] === data.reimbursementId) {
         const rowNum = i + 1;
         const now = new Date();
-        const newStatus = data.status.toLowerCase();
+        const updatedFields = [];
         
-        sheet.getRange(rowNum, idx['Status'] + 1).setValue(newStatus);
+        // Update status
+        if (data.status) {
+          const newStatus = data.status.toLowerCase();
+          sheet.getRange(rowNum, idx['Status'] + 1).setValue(newStatus);
+          updatedFields.push('status → ' + newStatus);
+          
+          if ((newStatus === 'approved' || newStatus === 'paid') && !allData[i][idx['ApprovedDate']]) {
+            const approvedDate = data.approvedDate ? new Date(data.approvedDate) : now;
+            sheet.getRange(rowNum, idx['ApprovedDate'] + 1).setValue(approvedDate);
+            updatedFields.push('approvedDate');
+          }
+          
+          if (newStatus === 'paid') {
+            const paidDate = data.paidDate ? new Date(data.paidDate) : now;
+            sheet.getRange(rowNum, idx['PaidDate'] + 1).setValue(paidDate);
+            updatedFields.push('paidDate');
+            
+            const linkedTxId = allData[i][idx['LinkedTransactionID']];
+            if (linkedTxId && getBudgetQuestApiUrl()) {
+              rtSyncNetCost({
+                transactionId: linkedTxId,
+                amountReimbursed: data.amountApproved || allData[i][idx['AmountClaimed']]
+              });
+            }
+          }
+        }
         
+        // Update ClaimID
+        if (data.claimId) {
+          sheet.getRange(rowNum, idx['ClaimID'] + 1).setValue(data.claimId);
+          updatedFields.push('claimId → ' + data.claimId);
+        }
+        
+        // Update ClaimType
+        if (data.claimType) {
+          sheet.getRange(rowNum, idx['ClaimType'] + 1).setValue(data.claimType);
+          updatedFields.push('claimType → ' + data.claimType);
+        }
+        
+        // Update BenefitType
+        if (data.benefitType) {
+          sheet.getRange(rowNum, idx['BenefitType'] + 1).setValue(data.benefitType);
+          updatedFields.push('benefitType → ' + data.benefitType);
+        }
+        
+        // Update Description
+        if (data.description) {
+          sheet.getRange(rowNum, idx['Description'] + 1).setValue(data.description);
+          updatedFields.push('description');
+        }
+        
+        // Update amounts
         if (data.amountApproved !== undefined) {
           sheet.getRange(rowNum, idx['AmountApproved'] + 1).setValue(parseFloat(data.amountApproved) || 0);
+          updatedFields.push('amountApproved → ' + data.amountApproved);
+        }
+        if (data.amountDisapproved !== undefined) {
+          sheet.getRange(rowNum, idx['AmountDisapproved'] + 1).setValue(parseFloat(data.amountDisapproved) || 0);
+          updatedFields.push('amountDisapproved → ' + data.amountDisapproved);
         }
         
-        if (newStatus === 'approved' || newStatus === 'paid') {
-          const currentApprovedDate = allData[i][idx['ApprovedDate']];
-          if (!currentApprovedDate) {
-            sheet.getRange(rowNum, idx['ApprovedDate'] + 1).setValue(now);
-          }
+        // Update dates (explicit, not auto-set)
+        if (data.approvedDate && !updatedFields.some(f => f === 'approvedDate')) {
+          sheet.getRange(rowNum, idx['ApprovedDate'] + 1).setValue(new Date(data.approvedDate));
+          updatedFields.push('approvedDate → ' + data.approvedDate);
+        }
+        if (data.submittedDate) {
+          sheet.getRange(rowNum, idx['SubmittedDate'] + 1).setValue(new Date(data.submittedDate));
+          updatedFields.push('submittedDate → ' + data.submittedDate);
         }
         
-        if (newStatus === 'paid') {
-          const paidDate = data.paidDate ? new Date(data.paidDate) : now;
-          sheet.getRange(rowNum, idx['PaidDate'] + 1).setValue(paidDate);
-          
-          // Sync NetCost to BudgetQuest if integrated
-          const linkedTxId = allData[i][idx['LinkedTransactionID']];
-          if (linkedTxId && getBudgetQuestApiUrl()) {
-            rtSyncNetCost({
-              transactionId: linkedTxId,
-              amountReimbursed: data.amountApproved || allData[i][idx['AmountClaimed']]
-            });
-          }
+        // Update ReceiptNumber
+        if (data.receiptNumber) {
+          sheet.getRange(rowNum, idx['ReceiptNumber'] + 1).setValue(data.receiptNumber);
+          updatedFields.push('receiptNumber → ' + data.receiptNumber);
         }
         
+        // Append notes
         if (data.notes) {
           const existingNotes = allData[i][idx['Notes']] || '';
           const newNotes = existingNotes ? existingNotes + ' | ' + data.notes : data.notes;
           sheet.getRange(rowNum, idx['Notes'] + 1).setValue(newNotes);
+          updatedFields.push('notes');
         }
         
         sheet.getRange(rowNum, idx['UpdatedAt'] + 1).setValue(now);
@@ -1054,8 +1113,9 @@ function rtUpdateStatus(data) {
         return {
           success: true,
           reimbursementId: data.reimbursementId,
-          newStatus: newStatus,
-          message: 'Reimbursement status updated'
+          newStatus: data.status ? data.status.toLowerCase() : allData[i][idx['Status']],
+          updatedFields: updatedFields,
+          message: 'Reimbursement updated: ' + updatedFields.join(', ')
         };
       }
     }

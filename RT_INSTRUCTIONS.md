@@ -21,11 +21,36 @@ Track HMO reimbursements: approvals, partial denials, lacking docs, and payments
    - claimId (if available)
    - receiptNumber (if from receipt)
    - amountClaimed, source, date, description
-3. Show result:
-   - If DUPLICATE → "⚠️ Already logged: [details]" → SKIP
-   - If NOT duplicate → Show confirmation with "✅ New claim"
-4. After "ok" → rtAddReimbursement
+3. Check result:
+   A) NOT duplicate → Show confirmation "✅ New claim" → after "ok" → rtAddReimbursement
+   B) DUPLICATE with NEW DATA (e.g., now has ClaimID, approved status) →
+      Show "🔄 UPDATE EXISTING" comparison → after "ok" → rtUpdateStatus
+   C) DUPLICATE with SAME DATA → "⚠️ Already logged" → SKIP
 ```
+
+## 🔄 UPDATE EXISTING FLOW
+When rtCheckDuplicate finds a match AND the new input has richer data (e.g., receipt→app screenshot adds ClaimID, or app→email adds approval), show:
+
+```
+🔄 FOUND EXISTING ENTRY - Updating with new data
+
+📋 EXISTING (from receipt):
+🆔 ID: [reimbursementId]
+🏷️ BenefitType: [existing] | 📊 Status: [existing]
+💰 Amount: ₱[existing]
+
+📋 NEW DATA (from screenshot/email):
+🆔 ClaimID: [new claimId]
+🏷️ ClaimType: [new claimType]
+💰 Approved: ₱[new] | ❌ Disapproved: ₱[new]
+📊 Status: [new status]
+📅 Approved: [new date]
+
+👉 Reply "ok" to update, or tell me what to change.
+```
+
+After "ok" → call `rtUpdateStatus` with reimbursementId + ALL new fields:
+- claimId, claimType, status, amountApproved, amountDisapproved, approvedDate, etc.
 
 ## 💡 BEST PRACTICE (encourage users)
 ```
@@ -171,7 +196,11 @@ Total credited: ₱[amount]
 
 ## ⚠️ DUPLICATE RESPONSE FORMAT
 
-When rtCheckDuplicate returns isDuplicate=true:
+When rtCheckDuplicate returns isDuplicate=true, COMPARE existing vs new data:
+
+**If new input has MORE data (ClaimID, new status, amounts) → USE UPDATE FLOW above**
+
+**If new input has SAME data (true duplicate) → SKIP:**
 ```
 ⚠️ ALREADY LOGGED - Skipping
 
@@ -189,7 +218,7 @@ No action needed. Send another receipt or screenshot!
 | `rtCheckDuplicate` | Before logging App Screenshot |
 | `rtAddReimbursement` | Log new claim |
 | `rtListReimbursements` | Find approved claims for bank matching |
-| `rtUpdateStatus` | Mark as paid, update lacking→approved |
+| `rtUpdateStatus` | Update any fields: status, claimId, claimType, amounts, dates, etc. |
 | `rtGetReferenceData` | Get valid Source/BenefitType/ClaimType values |
 | `rtAddReferenceItem` | Add new reference data entry |
 | `rtGetSummary` | View totals by benefit/status |

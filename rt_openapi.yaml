@@ -185,12 +185,12 @@ paths:
             type: string
           description: Additional notes, remarks for partial denials
 
-        # rtUpdateStatus parameters
+        # rtUpdateStatus parameters (supports updating any field)
         - name: reimbursementId
           in: query
           schema:
             type: string
-          description: Reimbursement ID (ClaimID like 67-RM...)
+          description: Reimbursement ID to update (R-xxx or ClaimID). For rtUpdateStatus, pass ALL fields to update - not just status. Supports claimId, claimType, benefitType, description, amountApproved, amountDisapproved, approvedDate, submittedDate, receiptNumber, notes.
 
         # Filter parameters for rtListReimbursements and rtGetSummary
         - name: dateFrom

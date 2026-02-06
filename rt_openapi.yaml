@@ -37,7 +37,7 @@ paths:
               - rtInitReferenceData
           description: |
             Actions in typical order:
-            1. rtCheckDuplicate - CALL FIRST (silently)
+            1. rtCheckDuplicate - CALL FIRST (silently). MUST send: claimId, receiptNumber, amountClaimed, source, date, description - ALL fields needed for fuzzy matching
             2. rtAddReimbursement - Log new claim
             3. rtListReimbursements - Find approved claims for bank matching
             4. rtUpdateStatus - Mark as paid
@@ -47,17 +47,19 @@ paths:
             8. rtInitReferenceData - Initialize ReferenceData sheet
 
         # rtCheckDuplicate / rtAddReimbursement parameters
+        # ⚠️ CRITICAL: For rtCheckDuplicate, ALWAYS send ALL of these fields for accurate matching:
+        #   claimId, receiptNumber, amountClaimed, source, date, description
         - name: claimId
           in: query
           schema:
             type: string
-          description: HMO claim reference number (e.g., 67-RM012606416A). REQUIRED for duplicate check.
+          description: HMO claim reference number (e.g., 67-RM012606416A).
 
         - name: amountClaimed
           in: query
           schema:
             type: number
-          description: Gross amount claimed. Used for duplicate matching.
+          description: Gross amount claimed. ALWAYS send this for rtCheckDuplicate.
 
         - name: category
           in: query
@@ -73,7 +75,7 @@ paths:
           schema:
             type: string
             default: Avega Managed Care
-          description: Source is always "Avega Managed Care"
+          description: ALWAYS send for rtCheckDuplicate. Source is always "Avega Managed Care"
 
         - name: benefitType
           in: query
@@ -119,7 +121,7 @@ paths:
           in: query
           schema:
             type: string
-          description: What was purchased or expense description
+          description: What was purchased or expense description. ALWAYS send for rtCheckDuplicate.
 
         - name: amountApproved
           in: query
@@ -156,7 +158,7 @@ paths:
           schema:
             type: string
             format: date
-          description: Purchase/receipt date YYYY-MM-DD
+          description: Purchase/receipt date YYYY-MM-DD. ALWAYS send for rtCheckDuplicate.
 
         - name: submittedDate
           in: query

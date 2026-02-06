@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy Policy - ReimbursementTracker</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 40px 20px;
+      color: #333;
+      line-height: 1.6;
+    }
+    h1 {
+      color: #1a73e8;
+      border-bottom: 2px solid #1a73e8;
+      padding-bottom: 10px;
+    }
+    h2 {
+      color: #444;
+      margin-top: 30px;
+    }
+    ul {
+      padding-left: 20px;
+    }
+    li {
+      margin-bottom: 8px;
+    }
+    .updated {
+      color: #666;
+      font-style: italic;
+    }
+    a {
+      color: #1a73e8;
+    }
+  </style>
+</head>
+<body>
+  <h1>Privacy Policy for ReimbursementTracker</h1>
+  <p class="updated">Last updated: February 6, 2026</p>
+
+  <h2>Overview</h2>
+  <p>
+    This Privacy Policy describes how ReimbursementTracker ("we", "our", or "us") collects, uses, and protects your information when you use our Custom GPT service to track and manage HMO reimbursement claims.
+  </p>
+
+  <h2>Information We Collect</h2>
+  <p>When you use ReimbursementTracker, the following information may be processed:</p>
+  <ul>
+    <li><strong>Receipt and claim data:</strong> Amounts, dates, descriptions, and claim IDs extracted from images you share (receipts, app screenshots, emails, bank screenshots)</li>
+    <li><strong>Reimbursement records:</strong> Benefit types, claim types, statuses, and notes stored in your connected Google Spreadsheet</li>
+    <li><strong>Receipt numbers:</strong> Reference numbers from physical receipt documents</li>
+  </ul>
+
+  <h2>How We Use Your Information</h2>
+  <p>We use the information solely to:</p>
+  <ul>
+    <li>Log and track reimbursement claims in your Google Spreadsheet</li>
+    <li>Check for duplicate claims before logging</li>
+    <li>Match bank payments to approved claims</li>
+    <li>Provide reimbursement summaries and status updates</li>
+    <li>Validate entries against your reference data (Source, BenefitType, ClaimType)</li>
+  </ul>
+
+  <h2>Data Storage</h2>
+  <p>
+    All reimbursement data is stored in <strong>your own Google Spreadsheet</strong> that you control. We do not maintain a separate database. The Google Apps Script backend runs under your Google account and only accesses the spreadsheet you have configured.
+  </p>
+
+  <h2>Data Sharing</h2>
+  <p>We do not sell, trade, or share your personal information with third parties. Your data remains in your Google Spreadsheet and is not transmitted to any external services beyond:</p>
+  <ul>
+    <li><strong>Google Apps Script:</strong> Used to read/write data to your spreadsheet</li>
+    <li><strong>OpenAI (ChatGPT):</strong> Processes your messages and images to extract claim details as part of the Custom GPT interaction</li>
+  </ul>
+
+  <h2>Third-Party Services</h2>
+  <p>
+    ReimbursementTracker integrates with Google Sheets via Google Apps Script. Your use of this service is also subject to <a href="https://policies.google.com/privacy" target="_blank">Google's Privacy Policy</a>. The Custom GPT runs on OpenAI's platform, subject to <a href="https://openai.com/policies/privacy-policy" target="_blank">OpenAI's Privacy Policy</a>.
+  </p>
+
+  <h2>Data Security</h2>
+  <p>
+    We take reasonable measures to protect your information. The API endpoint is deployed via Google Apps Script with HTTPS encryption. Access to your spreadsheet data is governed by your Google account permissions.
+  </p>
+
+  <h2>Your Rights</h2>
+  <p>Since all data is stored in your own Google Spreadsheet, you have full control to:</p>
+  <ul>
+    <li>View, edit, or delete any reimbursement records at any time</li>
+    <li>Revoke API access by undeploying the Apps Script web app</li>
+    <li>Export or download your data directly from Google Sheets</li>
+  </ul>
+
+  <h2>Changes to This Privacy Policy</h2>
+  <p>
+    We may update this Privacy Policy from time to time. We will notify you of any changes by posting the new Privacy Policy on this page and updating the "Last updated" date.
+  </p>
+
+  <h2>Contact Us</h2>
+  <p>
+    If you have any questions about this Privacy Policy, please open an issue on our <a href="https://github.com/jimsteven/reimbursement-tracker" target="_blank">GitHub repository</a>.
+  </p>
+</body>
+</html>

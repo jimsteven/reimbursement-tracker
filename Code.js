@@ -13,9 +13,15 @@
  * - Silent duplicate checking before confirmation
  * - Fixed BenefitTypes from ReimbursementBenefits sheet
  * - Bank screenshot flow for marking claims as paid
+ *
+ * v1.5.0 CHANGES:
+ * - ReferenceData sheet as source of truth for Source, BenefitType, ClaimType
+ * - Menu: Initialize/view ReferenceData
+ * - API: rtGetReferenceData, rtAddReferenceItem actions
+ * - Validation uses ReferenceData sheet instead of hardcoded lists
  */
 
-const RT_VERSION = '1.4.0';
+const RT_VERSION = '1.5.0';
 
 // ============================================
 // MENU & UI SETUP
@@ -31,6 +37,7 @@ function onOpen() {
     .addItem('🔗 Setup: Connect to BudgetQuest', 'setupBudgetQuestIntegration')
     .addSeparator()
     .addItem('📊 Initialize Reimbursements Sheet', 'menuInitializeSheet')
+    .addItem('📚 Initialize Reference Data', 'menuInitializeReferenceData')
     .addItem('🔄 Migrate to v1.2 Schema', 'menuMigrateToV12')
     .addItem('📈 View Summary', 'menuShowSummary')
     .addSeparator()
@@ -134,6 +141,20 @@ function menuInitializeSheet() {
   
   if (result.success) {
     ui.alert('✅ Reimbursements sheet initialized!', ui.ButtonSet.OK);
+  } else {
+    ui.alert('❌ Error: ' + result.error, ui.ButtonSet.OK);
+  }
+}
+
+/**
+ * Menu: Initialize ReferenceData sheet with default values
+ */
+function menuInitializeReferenceData() {
+  const result = rtInitializeReferenceData();
+  const ui = SpreadsheetApp.getUi();
+  
+  if (result.success) {
+    ui.alert('✅ ' + result.message, ui.ButtonSet.OK);
   } else {
     ui.alert('❌ Error: ' + result.error, ui.ButtonSet.OK);
   }
@@ -349,6 +370,15 @@ function handleAction(params) {
       case 'rtSyncNetCost':
         result = rtSyncNetCost(data);
         break;
+      case 'rtGetReferenceData':
+        result = rtGetReferenceData(data);
+        break;
+      case 'rtAddReferenceItem':
+        result = rtAddReferenceItem(data);
+        break;
+      case 'rtInitReferenceData':
+        result = rtInitializeReferenceData();
+        break;
       default:
         result = { success: false, error: 'Unknown action: ' + action };
     }
@@ -418,6 +448,171 @@ function rtGetConfig() {
 // ============================================
 
 /**
+ * Initialize the ReferenceData sheet with default values
+ */
+function rtInitializeReferenceData() {
+  try {
+    const ss = getSpreadsheet();
+    let sheet = ss.getSheetByName('ReferenceData');
+    
+    if (!sheet) {
+      sheet = ss.insertSheet('ReferenceData');
+    }
+    
+    const headers = ['Type', 'Value', 'DisplayName', 'Description'];
+    
+    if (sheet.getLastRow() === 0 || sheet.getLastRow() === 1) {
+      sheet.clear();
+      
+      const data = [
+        headers,
+        // Sources
+        ['Source', 'Avega Managed Care', 'Avega Managed Care', 'HMO provider'],
+        // Benefit Types
+        ['BenefitType', 'maternity_assistance', 'Maternity Assistance', ''],
+        ['BenefitType', 'medicine_reimbursement', 'Medicine (Confinement)', ''],
+        ['BenefitType', 'pet_support', 'Pet Support Program', ''],
+        ['BenefitType', 'optical', 'Optical Benefit', ''],
+        ['BenefitType', 'psychology_sessions', 'Psychology Sessions', ''],
+        ['BenefitType', 'dental_reimbursement', 'Dental (Provincial)', ''],
+        // Claim Types
+        ['ClaimType', 'OT', 'Outpatient Treatment', ''],
+        ['ClaimType', 'OL', 'Outpatient Lab', ''],
+        ['ClaimType', 'DP', 'Dental Procedure', ''],
+        ['ClaimType', 'APE', 'Annual Physical Exam', ''],
+        ['ClaimType', 'PS', 'Pet Support', ''],
+        ['ClaimType', 'OP', 'Optical', ''],
+        ['ClaimType', 'PY', 'Psychology', ''],
+        ['ClaimType', 'MT', 'Maternity', ''],
+        ['ClaimType', 'MR', 'Medicine Reimbursement', '']
+      ];
+      
+      sheet.getRange(1, 1, data.length, headers.length).setValues(data);
+      sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold');
+      sheet.setFrozenRows(1);
+      
+      return { success: true, message: 'ReferenceData sheet initialized with ' + (data.length - 1) + ' entries' };
+    }
+    
+    return { success: true, message: 'ReferenceData sheet already exists with data' };
+  } catch (error) {
+    console.error('rtInitializeReferenceData error:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Get reference data, optionally filtered by type
+ */
+function rtGetReferenceData(data) {
+  try {
+    const ss = getSpreadsheet();
+    const sheet = ss.getSheetByName('ReferenceData');
+    
+    if (!sheet || sheet.getLastRow() <= 1) {
+      return { success: false, error: 'ReferenceData sheet not found or empty. Use rtInitReferenceData to create it.' };
+    }
+    
+    const allData = sheet.getDataRange().getValues();
+    const headers = allData[0];
+    const idx = {};
+    headers.forEach((h, i) => { idx[h] = i; });
+    
+    const typeFilter = data && data.type ? data.type : null;
+    
+    const results = [];
+    for (let i = 1; i < allData.length; i++) {
+      const row = allData[i];
+      const type = row[idx['Type']];
+      
+      if (typeFilter && type !== typeFilter) continue;
+      
+      results.push({
+        type: type,
+        value: row[idx['Value']],
+        displayName: row[idx['DisplayName']] || '',
+        description: row[idx['Description']] || ''
+      });
+    }
+    
+    // Group by type
+    const grouped = {};
+    results.forEach(item => {
+      if (!grouped[item.type]) grouped[item.type] = [];
+      grouped[item.type].push(item);
+    });
+    
+    return {
+      success: true,
+      referenceData: results,
+      grouped: grouped,
+      count: results.length
+    };
+  } catch (error) {
+    console.error('rtGetReferenceData error:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Add a new item to the ReferenceData sheet
+ */
+function rtAddReferenceItem(data) {
+  try {
+    if (!data.type) {
+      return { success: false, error: 'type is required (Source, BenefitType, or ClaimType)' };
+    }
+    if (!data.value) {
+      return { success: false, error: 'value is required' };
+    }
+    
+    const validTypes = ['Source', 'BenefitType', 'ClaimType'];
+    if (!validTypes.includes(data.type)) {
+      return { success: false, error: 'Invalid type. Must be one of: ' + validTypes.join(', ') };
+    }
+    
+    const ss = getSpreadsheet();
+    let sheet = ss.getSheetByName('ReferenceData');
+    
+    if (!sheet) {
+      const initResult = rtInitializeReferenceData();
+      if (!initResult.success) return initResult;
+      sheet = ss.getSheetByName('ReferenceData');
+    }
+    
+    // Check for duplicates
+    const allData = sheet.getDataRange().getValues();
+    const headers = allData[0];
+    const idx = {};
+    headers.forEach((h, i) => { idx[h] = i; });
+    
+    for (let i = 1; i < allData.length; i++) {
+      if (allData[i][idx['Type']] === data.type && allData[i][idx['Value']] === data.value) {
+        return { success: false, error: 'Entry already exists: ' + data.type + ' = ' + data.value };
+      }
+    }
+    
+    const row = [
+      data.type,
+      data.value,
+      data.displayName || data.value,
+      data.description || ''
+    ];
+    
+    sheet.appendRow(row);
+    
+    return {
+      success: true,
+      message: data.type + ' "' + data.value + '" added to reference data',
+      item: { type: data.type, value: data.value, displayName: data.displayName || data.value }
+    };
+  } catch (error) {
+    console.error('rtAddReferenceItem error:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
  * Initialize the Reimbursements sheet
  */
 function rtInitializeSheet() {
@@ -433,7 +628,7 @@ function rtInitializeSheet() {
       'ReimbursementID', 'Category', 'Source', 'BenefitType', 'ClaimType', 'ClaimID',
       'Description', 'AmountClaimed', 'AmountApproved', 'AmountDisapproved', 'Status',
       'SubmittedDate', 'ApprovedDate', 'PaidDate', 'PurchaseDate', 'LinkedTransactionID',
-      'ReceiptImageURL', 'Notes', 'CreatedAt', 'UpdatedAt'
+      'ReceiptImageURL', 'Notes', 'CreatedAt', 'UpdatedAt', 'ReceiptNumber'
     ];
     
     if (sheet.getLastRow() === 0) {
@@ -574,6 +769,27 @@ function rtAddReimbursement(data) {
       return { success: false, error: 'Invalid category. Must be one of: ' + validCategories.join(', ') };
     }
     
+    // Validate benefitType and claimType against ReferenceData sheet if available
+    try {
+      const refData = rtGetReferenceData({});
+      if (refData.success && refData.grouped) {
+        if (data.benefitType && refData.grouped['BenefitType']) {
+          const validBenefits = refData.grouped['BenefitType'].map(b => b.value);
+          if (!validBenefits.includes(data.benefitType)) {
+            return { success: false, error: 'Invalid benefitType "' + data.benefitType + '". Valid: ' + validBenefits.join(', ') };
+          }
+        }
+        if (data.claimType && refData.grouped['ClaimType']) {
+          const validClaims = refData.grouped['ClaimType'].map(c => c.value);
+          if (!validClaims.includes(data.claimType)) {
+            return { success: false, error: 'Invalid claimType "' + data.claimType + '". Valid: ' + validClaims.join(', ') };
+          }
+        }
+      }
+    } catch (refErr) {
+      // ReferenceData sheet not available, skip validation
+    }
+    
     const now = new Date();
     const purchaseDate = new Date(data.date);
     const reimbId = data.claimId || rtGenerateId();
@@ -605,7 +821,8 @@ function rtAddReimbursement(data) {
       data.receiptImageURL || '',                     // ReceiptImageURL
       data.notes || '',                               // Notes
       now,                                            // CreatedAt
-      now                                             // UpdatedAt
+      now,                                            // UpdatedAt
+      data.receiptNumber || ''                        // ReceiptNumber
     ];
     
     sheet.appendRow(row);
@@ -621,7 +838,8 @@ function rtAddReimbursement(data) {
       amountApproved: parseFloat(data.amountApproved) || 0,
       amountDisapproved: parseFloat(data.amountDisapproved) || 0,
       claimType: data.claimType || null,
-      claimId: data.claimId || null
+      claimId: data.claimId || null,
+      receiptNumber: data.receiptNumber || null
     };
   } catch (error) {
     console.error('rtAddReimbursement error:', error);
@@ -873,7 +1091,8 @@ function rtListReimbursements(data) {
         purchaseDate: safeFormatDate(row[idx['PurchaseDate']]),
         linkedTransactionId: row[idx['LinkedTransactionID']] || null,
         receiptImageURL: row[idx['ReceiptImageURL']] || null,
-        notes: row[idx['Notes']] || null
+        notes: row[idx['Notes']] || null,
+        receiptNumber: row[idx['ReceiptNumber']] || null
       });
     }
     
@@ -946,7 +1165,7 @@ function rtMigrateToV12() {
         'ReimbursementID', 'Category', 'Source', 'BenefitType', 'ClaimType', 'ClaimID',
         'Description', 'AmountClaimed', 'AmountApproved', 'AmountDisapproved', 'Status',
         'SubmittedDate', 'ApprovedDate', 'PaidDate', 'PurchaseDate', 'LinkedTransactionID',
-        'ReceiptImageURL', 'Notes', 'CreatedAt', 'UpdatedAt'
+        'ReceiptImageURL', 'Notes', 'CreatedAt', 'UpdatedAt', 'ReceiptNumber'
       ];
       sheet.clear();
       sheet.getRange(1, 1, 1, newHeaders.length).setValues([newHeaders]);
@@ -968,7 +1187,7 @@ function rtMigrateToV12() {
       'ReimbursementID', 'Category', 'Source', 'BenefitType', 'ClaimType', 'ClaimID',
       'Description', 'AmountClaimed', 'AmountApproved', 'AmountDisapproved', 'Status',
       'SubmittedDate', 'ApprovedDate', 'PaidDate', 'PurchaseDate', 'LinkedTransactionID',
-      'ReceiptImageURL', 'Notes', 'CreatedAt', 'UpdatedAt'
+      'ReceiptImageURL', 'Notes', 'CreatedAt', 'UpdatedAt', 'ReceiptNumber'
     ];
     
     const newData = [newHeaders];
@@ -995,7 +1214,8 @@ function rtMigrateToV12() {
         oldRow[oldIdx['ReceiptImageURL']] || '',
         oldRow[oldIdx['Notes']] || '',
         oldRow[oldIdx['CreatedAt']] || '',
-        oldRow[oldIdx['UpdatedAt']] || ''
+        oldRow[oldIdx['UpdatedAt']] || '',
+        oldRow[oldIdx['ReceiptNumber']] || ''
       ];
       newData.push(newRow);
     }

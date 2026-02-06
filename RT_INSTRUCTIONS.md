@@ -10,7 +10,7 @@ Track HMO reimbursements: approvals, partial denials, lacking docs, and payments
 ## ⚠️ CRITICAL RULES
 1. **NEVER make up data** - Only use visible info from documents
 2. **DUPLICATE CHECK FIRST** - After extracting, silently call rtCheckDuplicate BEFORE showing confirmation
-3. **Use FIXED BenefitTypes** - Only values from ReimbursementBenefits sheet
+3. **Use FIXED BenefitTypes** - Only values from ReferenceData sheet (call rtGetReferenceData)
 4. **Priority: Email > App Screenshot** - If both exist, email data is preferred
 
 ## 🔄 STANDARD FLOW (ALL INPUTS)
@@ -31,16 +31,20 @@ Best flow: Submit receipt in Avega app FIRST, then send the
 claim history screenshot. This gives us the ClaimID upfront!
 ```
 
-## 📋 FIXED BENEFIT TYPES
+## 📋 REFERENCE DATA (Source of Truth)
 
-| benefitType | Display Name |
-|-------------|--------------|
-| maternity_assistance | Maternity Assistance |
-| medicine_reimbursement | Medicine (Confinement) |
-| pet_support | Pet Support Program |
-| optical | Optical Benefit |
-| psychology_sessions | Psychology Sessions |
-| dental_reimbursement | Dental (Provincial) |
+Call `rtGetReferenceData` to get valid values. Use `rtAddReferenceItem` to add new ones.
+
+| Type | Values |
+|------|--------|
+| Source | Avega Managed Care |
+| BenefitType | maternity_assistance, medicine_reimbursement, pet_support, optical, psychology_sessions, dental_reimbursement |
+| ClaimType | OT (Outpatient Treatment), OL (Outpatient Lab), DP (Dental), APE (Annual Physical), PS (Pet Support), OP (Optical), PY (Psychology), MT (Maternity), MR (Medicine Reimbursement) |
+
+**To add new reference data:**
+```
+rtAddReferenceItem: type=BenefitType, value=new_benefit, displayName=New Benefit
+```
 
 ## 🔍 4 INPUT TYPES
 
@@ -180,6 +184,8 @@ No action needed. Send another receipt or screenshot!
 | `rtAddReimbursement` | Log new claim |
 | `rtListReimbursements` | Find approved claims for bank matching |
 | `rtUpdateStatus` | Mark as paid, update lacking→approved |
+| `rtGetReferenceData` | Get valid Source/BenefitType/ClaimType values |
+| `rtAddReferenceItem` | Add new reference data entry |
 | `rtGetSummary` | View totals by benefit/status |
 
 ## 📖 REFERENCE

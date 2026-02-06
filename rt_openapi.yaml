@@ -2,11 +2,11 @@ openapi: 3.1.0
 info:
   title: ReimbursementTracker API
   description: FREE standalone reimbursement tracking API. Track HMO claims with fixed benefit types. Supports 4 input types (receipt, app screenshot, email, bank screenshot), silent duplicate detection, and payment tracking.
-  version: 1.4.0
+  version: 1.5.0
 
 servers:
   - url: https://script.google.com/macros/s/AKfycbw7BOmUd6Erm8wlU1oVd1_y7mTQx7LACKj2duN2jdkZo6LuvMDPQ4QZg10SzFfN_hlRuA
-    description: ReimbursementTracker Standalone API v1.4.0
+    description: ReimbursementTracker Standalone API v1.5.0
 
 paths:
   /exec:
@@ -32,6 +32,9 @@ paths:
               - rtUpdateStatus
               - rtGetSummary
               - rtPing
+              - rtGetReferenceData
+              - rtAddReferenceItem
+              - rtInitReferenceData
           description: |
             Actions in typical order:
             1. rtCheckDuplicate - CALL FIRST (silently)
@@ -39,6 +42,9 @@ paths:
             3. rtListReimbursements - Find approved claims for bank matching
             4. rtUpdateStatus - Mark as paid
             5. rtGetSummary - View totals
+            6. rtGetReferenceData - Get valid Source/BenefitType/ClaimType values
+            7. rtAddReferenceItem - Add new reference data entry
+            8. rtInitReferenceData - Initialize ReferenceData sheet
 
         # rtCheckDuplicate / rtAddReimbursement parameters
         - name: claimId
@@ -225,6 +231,37 @@ paths:
             default: desc
           description: Sort order
 
+        # rtGetReferenceData parameters
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum:
+              - Source
+              - BenefitType
+              - ClaimType
+          description: Filter reference data by type. Omit to get all types.
+
+        # rtAddReferenceItem parameters
+        - name: value
+          in: query
+          schema:
+            type: string
+          description: The value to add (e.g., "optical", "OT", "Avega Managed Care")
+
+        - name: displayName
+          in: query
+          schema:
+            type: string
+          description: Human-readable display name for the reference item
+
+        # receiptNumber parameter
+        - name: receiptNumber
+          in: query
+          schema:
+            type: string
+          description: Receipt number from the physical receipt document
+
       responses:
         "200":
           description: API response
@@ -364,3 +401,35 @@ paths:
                   count:
                     type: integer
                     description: Number of records returned
+
+                  # rtGetReferenceData response
+                  referenceData:
+                    type: array
+                    description: List of reference data items
+                    items:
+                      type: object
+                      properties:
+                        type:
+                          type: string
+                          description: Source, BenefitType, or ClaimType
+                        value:
+                          type: string
+                        displayName:
+                          type: string
+                        description:
+                          type: string
+                  grouped:
+                    type: object
+                    description: Reference data grouped by type
+
+                  # rtAddReferenceItem response
+                  item:
+                    type: object
+                    description: The newly added reference item
+                    properties:
+                      type:
+                        type: string
+                      value:
+                        type: string
+                      displayName:
+                        type: string

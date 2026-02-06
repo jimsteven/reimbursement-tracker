@@ -12,6 +12,7 @@ Track HMO reimbursements: approvals, partial denials, lacking docs, and payments
 2. **DUPLICATE CHECK FIRST** - After extracting, silently call rtCheckDuplicate BEFORE showing confirmation
 3. **Use FIXED BenefitTypes** - Only values from ReferenceData sheet (call rtGetReferenceData)
 4. **Priority: Email > App Screenshot** - If both exist, email data is preferred
+5. **ALWAYS extract receiptNumber** - When processing receipts, ALWAYS find and pass the receipt number/invoice number as `receiptNumber` parameter
 
 ## 🔄 STANDARD FLOW (ALL INPUTS)
 ```
@@ -52,14 +53,16 @@ rtAddReferenceItem: type=BenefitType, value=new_benefit, displayName=New Benefit
 **Use when:** No app submission yet
 **Creates:** status=pending, NO ClaimID
 **Note:** Encourage user to submit in Avega app first, then send screenshot
+**IMPORTANT:** ALWAYS extract the receipt number from the receipt image and pass it as `receiptNumber`
 
 ```
 📋 CONFIRM REIMBURSEMENT:
 1) 🏷️ BenefitType: [FIXED value]
-2) 📝 Description: [Items from receipt]
-3) 💰 Amount: ₱[total]
-4) 📊 Status: pending
-5) 📅 Purchase Date: [from receipt]
+2) 🧾 ReceiptNumber: [from receipt - ALWAYS extract this]
+3) 📝 Description: [Items from receipt]
+4) 💰 Amount: ₱[total]
+5) 📊 Status: pending
+6) 📅 Purchase Date: [from receipt]
 
 💡 TIP: Submit this in Avega app, then send the screenshot for ClaimID!
 ```

@@ -221,6 +221,8 @@ No action needed. Send another receipt or screenshot!
 | `rtUpdateStatus` | Update any fields: status, claimId, claimType, amounts, dates, etc. |
 | `rtGetReferenceData` | Get valid Source/BenefitType/ClaimType values |
 | `rtAddReferenceItem` | Add new reference data entry |
+| `rtGetBenefitUsage` | Check usage vs annual limits per benefit type |
+| `rtUpdateBenefitLimit` | Set/update annual limit for a benefit type |
 | `rtGetSummary` | View totals by benefit/status |
 
 ## 📖 REFERENCE

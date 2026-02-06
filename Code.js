@@ -38,6 +38,7 @@ function onOpen() {
     .addSeparator()
     .addItem('📊 Initialize Reimbursements Sheet', 'menuInitializeSheet')
     .addItem('📚 Initialize Reference Data', 'menuInitializeReferenceData')
+    .addItem('💰 Initialize Benefit Limits', 'menuInitializeBenefitLimits')
     .addItem('🔄 Migrate to v1.2 Schema', 'menuMigrateToV12')
     .addItem('📈 View Summary', 'menuShowSummary')
     .addSeparator()
@@ -151,6 +152,20 @@ function menuInitializeSheet() {
  */
 function menuInitializeReferenceData() {
   const result = rtInitializeReferenceData();
+  const ui = SpreadsheetApp.getUi();
+  
+  if (result.success) {
+    ui.alert('✅ ' + result.message, ui.ButtonSet.OK);
+  } else {
+    ui.alert('❌ Error: ' + result.error, ui.ButtonSet.OK);
+  }
+}
+
+/**
+ * Menu: Initialize BenefitLimits sheet
+ */
+function menuInitializeBenefitLimits() {
+  const result = rtInitializeBenefitLimits();
   const ui = SpreadsheetApp.getUi();
   
   if (result.success) {
@@ -378,6 +393,15 @@ function handleAction(params) {
         break;
       case 'rtInitReferenceData':
         result = rtInitializeReferenceData();
+        break;
+      case 'rtGetBenefitUsage':
+        result = rtGetBenefitUsage(data);
+        break;
+      case 'rtUpdateBenefitLimit':
+        result = rtUpdateBenefitLimit(data);
+        break;
+      case 'rtInitBenefitLimits':
+        result = rtInitializeBenefitLimits();
         break;
       default:
         result = { success: false, error: 'Unknown action: ' + action };
@@ -608,6 +632,236 @@ function rtAddReferenceItem(data) {
     };
   } catch (error) {
     console.error('rtAddReferenceItem error:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Initialize the BenefitLimits sheet with default annual limits
+ */
+function rtInitializeBenefitLimits() {
+  try {
+    const ss = getSpreadsheet();
+    let sheet = ss.getSheetByName('BenefitLimits');
+    
+    if (!sheet) {
+      sheet = ss.insertSheet('BenefitLimits');
+    }
+    
+    const headers = ['BenefitType', 'DisplayName', 'AnnualLimit', 'Period', 'Notes'];
+    
+    if (sheet.getLastRow() === 0 || sheet.getLastRow() === 1) {
+      sheet.clear();
+      
+      const data = [
+        headers,
+        ['maternity_assistance', 'Maternity Assistance', 0, 'annual', 'Set your limit'],
+        ['medicine_reimbursement', 'Medicine (Confinement)', 0, 'annual', 'Set your limit'],
+        ['pet_support', 'Pet Support Program', 0, 'annual', 'Set your limit'],
+        ['optical', 'Optical Benefit', 0, 'annual', 'Set your limit'],
+        ['psychology_sessions', 'Psychology Sessions', 0, 'annual', 'Set your limit'],
+        ['dental_reimbursement', 'Dental (Provincial)', 0, 'annual', 'Set your limit']
+      ];
+      
+      sheet.getRange(1, 1, data.length, headers.length).setValues(data);
+      sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold');
+      sheet.setFrozenRows(1);
+      
+      return { success: true, message: 'BenefitLimits sheet initialized with ' + (data.length - 1) + ' benefit types. Update the AnnualLimit column with your actual limits.' };
+    }
+    
+    return { success: true, message: 'BenefitLimits sheet already exists with data' };
+  } catch (error) {
+    console.error('rtInitializeBenefitLimits error:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Get benefit usage vs limits for the current year (or specified year)
+ * Calculates from Reimbursements sheet and compares to BenefitLimits
+ */
+function rtGetBenefitUsage(data) {
+  try {
+    const ss = getSpreadsheet();
+    const limitsSheet = ss.getSheetByName('BenefitLimits');
+    const reimbSheet = ss.getSheetByName('Reimbursements');
+    
+    if (!limitsSheet || limitsSheet.getLastRow() <= 1) {
+      return { success: false, error: 'BenefitLimits sheet not found. Use rtInitBenefitLimits to create it.' };
+    }
+    
+    // Get year filter (default: current year)
+    const year = data && data.year ? parseInt(data.year) : new Date().getFullYear();
+    
+    // Read limits
+    const limitsData = limitsSheet.getDataRange().getValues();
+    const limitsHeaders = limitsData[0];
+    const limitsIdx = {};
+    limitsHeaders.forEach((h, i) => { limitsIdx[h] = i; });
+    
+    const limits = {};
+    for (let i = 1; i < limitsData.length; i++) {
+      const row = limitsData[i];
+      const benefitType = row[limitsIdx['BenefitType']];
+      limits[benefitType] = {
+        benefitType: benefitType,
+        displayName: row[limitsIdx['DisplayName']] || benefitType,
+        annualLimit: parseFloat(row[limitsIdx['AnnualLimit']]) || 0,
+        period: row[limitsIdx['Period']] || 'annual',
+        notes: row[limitsIdx['Notes']] || ''
+      };
+    }
+    
+    // Calculate usage from Reimbursements
+    const usage = {};
+    Object.keys(limits).forEach(bt => {
+      usage[bt] = { claimed: 0, approved: 0, paid: 0, pendingCount: 0, approvedCount: 0, paidCount: 0, totalCount: 0 };
+    });
+    
+    if (reimbSheet && reimbSheet.getLastRow() > 1) {
+      const reimbData = reimbSheet.getDataRange().getValues();
+      const reimbHeaders = reimbData[0];
+      const reimbIdx = {};
+      reimbHeaders.forEach((h, i) => { reimbIdx[h] = i; });
+      
+      for (let i = 1; i < reimbData.length; i++) {
+        const row = reimbData[i];
+        const benefitType = row[reimbIdx['BenefitType']];
+        const status = row[reimbIdx['Status']];
+        const amountClaimed = parseFloat(row[reimbIdx['AmountClaimed']]) || 0;
+        const amountApproved = parseFloat(row[reimbIdx['AmountApproved']]) || 0;
+        
+        // Filter by year using PurchaseDate or SubmittedDate
+        const purchaseDate = row[reimbIdx['PurchaseDate']] ? new Date(row[reimbIdx['PurchaseDate']]) : null;
+        const submittedDate = row[reimbIdx['SubmittedDate']] ? new Date(row[reimbIdx['SubmittedDate']]) : null;
+        const refDate = purchaseDate || submittedDate;
+        if (!refDate || refDate.getFullYear() !== year) continue;
+        
+        if (!usage[benefitType]) {
+          usage[benefitType] = { claimed: 0, approved: 0, paid: 0, pendingCount: 0, approvedCount: 0, paidCount: 0, totalCount: 0 };
+        }
+        
+        usage[benefitType].totalCount++;
+        usage[benefitType].claimed += amountClaimed;
+        
+        if (status === 'approved') {
+          usage[benefitType].approved += amountApproved || amountClaimed;
+          usage[benefitType].approvedCount++;
+        } else if (status === 'paid') {
+          usage[benefitType].approved += amountApproved || amountClaimed;
+          usage[benefitType].paid += amountApproved || amountClaimed;
+          usage[benefitType].paidCount++;
+        } else if (status === 'pending') {
+          usage[benefitType].pendingCount++;
+        }
+      }
+    }
+    
+    // Build result with limit comparison
+    const benefits = [];
+    let hasWarning = false;
+    
+    Object.keys(limits).forEach(bt => {
+      const limit = limits[bt];
+      const use = usage[bt] || { claimed: 0, approved: 0, paid: 0, pendingCount: 0, approvedCount: 0, paidCount: 0, totalCount: 0 };
+      const usedAmount = use.approved || use.claimed;
+      const remaining = limit.annualLimit > 0 ? limit.annualLimit - usedAmount : null;
+      const percentUsed = limit.annualLimit > 0 ? Math.round((usedAmount / limit.annualLimit) * 100) : null;
+      const isOverLimit = remaining !== null && remaining < 0;
+      const isNearLimit = percentUsed !== null && percentUsed >= 80;
+      
+      if (isOverLimit || isNearLimit) hasWarning = true;
+      
+      let status = 'ok';
+      if (limit.annualLimit === 0) {
+        status = 'no_limit_set';
+      } else if (isOverLimit) {
+        status = 'over_limit';
+      } else if (isNearLimit) {
+        status = 'near_limit';
+      }
+      
+      benefits.push({
+        benefitType: bt,
+        displayName: limit.displayName,
+        annualLimit: limit.annualLimit,
+        period: limit.period,
+        claimed: use.claimed,
+        approved: use.approved,
+        paid: use.paid,
+        used: usedAmount,
+        remaining: remaining,
+        percentUsed: percentUsed,
+        status: status,
+        claims: {
+          total: use.totalCount,
+          pending: use.pendingCount,
+          approved: use.approvedCount,
+          paid: use.paidCount
+        }
+      });
+    });
+    
+    return {
+      success: true,
+      year: year,
+      benefits: benefits,
+      hasWarning: hasWarning,
+      message: hasWarning ? 'Warning: Some benefits are near or over their limit' : 'All benefits within limits'
+    };
+  } catch (error) {
+    console.error('rtGetBenefitUsage error:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Update the annual limit for a benefit type
+ */
+function rtUpdateBenefitLimit(data) {
+  try {
+    if (!data.benefitType) {
+      return { success: false, error: 'benefitType is required' };
+    }
+    if (data.annualLimit === undefined) {
+      return { success: false, error: 'annualLimit is required' };
+    }
+    
+    const ss = getSpreadsheet();
+    let sheet = ss.getSheetByName('BenefitLimits');
+    
+    if (!sheet) {
+      const initResult = rtInitializeBenefitLimits();
+      if (!initResult.success) return initResult;
+      sheet = ss.getSheetByName('BenefitLimits');
+    }
+    
+    const allData = sheet.getDataRange().getValues();
+    const headers = allData[0];
+    const idx = {};
+    headers.forEach((h, i) => { idx[h] = i; });
+    
+    for (let i = 1; i < allData.length; i++) {
+      if (allData[i][idx['BenefitType']] === data.benefitType) {
+        const rowNum = i + 1;
+        sheet.getRange(rowNum, idx['AnnualLimit'] + 1).setValue(parseFloat(data.annualLimit) || 0);
+        if (data.notes) {
+          sheet.getRange(rowNum, idx['Notes'] + 1).setValue(data.notes);
+        }
+        
+        return {
+          success: true,
+          benefitType: data.benefitType,
+          annualLimit: parseFloat(data.annualLimit) || 0,
+          message: 'Limit updated for ' + data.benefitType + ': ₱' + data.annualLimit
+        };
+      }
+    }
+    
+    return { success: false, error: 'BenefitType not found: ' + data.benefitType + '. Add it to BenefitLimits sheet first.' };
+  } catch (error) {
+    console.error('rtUpdateBenefitLimit error:', error);
     return { success: false, error: error.message };
   }
 }

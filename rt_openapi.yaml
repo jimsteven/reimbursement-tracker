@@ -35,6 +35,9 @@ paths:
               - rtGetReferenceData
               - rtAddReferenceItem
               - rtInitReferenceData
+              - rtGetBenefitUsage
+              - rtUpdateBenefitLimit
+              - rtInitBenefitLimits
           description: |
             Actions in typical order:
             1. rtCheckDuplicate - CALL FIRST (silently). MUST send: claimId, receiptNumber, amountClaimed, source, date, description - ALL fields needed for fuzzy matching
@@ -45,6 +48,9 @@ paths:
             6. rtGetReferenceData - Get valid Source/BenefitType/ClaimType values
             7. rtAddReferenceItem - Add new reference data entry
             8. rtInitReferenceData - Initialize ReferenceData sheet
+            9. rtGetBenefitUsage - Check usage vs annual limits per benefit type
+            10. rtUpdateBenefitLimit - Set/update annual limit for a benefit type
+            11. rtInitBenefitLimits - Initialize BenefitLimits sheet
 
         # rtCheckDuplicate / rtAddReimbursement parameters
         # ⚠️ CRITICAL: For rtCheckDuplicate, ALWAYS send ALL of these fields for accurate matching:
@@ -264,6 +270,20 @@ paths:
             type: string
           description: Receipt number from the physical receipt document
 
+        # rtGetBenefitUsage parameters
+        - name: year
+          in: query
+          schema:
+            type: integer
+          description: Year to check usage for (defaults to current year)
+
+        # rtUpdateBenefitLimit parameters
+        - name: annualLimit
+          in: query
+          schema:
+            type: number
+          description: Annual limit amount for a benefit type
+
       responses:
         "200":
           description: API response
@@ -435,3 +455,43 @@ paths:
                         type: string
                       displayName:
                         type: string
+
+                  # rtGetBenefitUsage response
+                  year:
+                    type: integer
+                    description: Year for usage data
+                  benefits:
+                    type: array
+                    description: Usage vs limits per benefit type
+                    items:
+                      type: object
+                      properties:
+                        benefitType:
+                          type: string
+                        displayName:
+                          type: string
+                        annualLimit:
+                          type: number
+                        used:
+                          type: number
+                        remaining:
+                          type: number
+                        percentUsed:
+                          type: integer
+                        status:
+                          type: string
+                          description: ok, near_limit (>=80%), over_limit, or no_limit_set
+                        claims:
+                          type: object
+                          properties:
+                            total:
+                              type: integer
+                            pending:
+                              type: integer
+                            approved:
+                              type: integer
+                            paid:
+                              type: integer
+                  hasWarning:
+                    type: boolean
+                    description: True if any benefit is near or over its limit

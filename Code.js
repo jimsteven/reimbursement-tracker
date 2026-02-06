@@ -674,9 +674,19 @@ function rtCheckDuplicate(data) {
       }
       
       // Check by ReimbursementID (if using ClaimID as ID)
-      if (data.claimId && row[idx['ReimbursementID']] === data.claimId) {
+      if (!isMatch && data.claimId && row[idx['ReimbursementID']] === data.claimId) {
         isMatch = true;
         matchReason = 'Same ReimbursementID: ' + data.claimId;
+      }
+      
+      // Check by ReceiptNumber (exact match)
+      if (!isMatch && data.receiptNumber && idx['ReceiptNumber'] !== undefined) {
+        const rowReceiptNum = String(row[idx['ReceiptNumber']] || '').trim();
+        const inputReceiptNum = String(data.receiptNumber).trim();
+        if (rowReceiptNum && rowReceiptNum === inputReceiptNum) {
+          isMatch = true;
+          matchReason = 'Same ReceiptNumber: ' + inputReceiptNum;
+        }
       }
       
       // Fuzzy match: same source + amount + date (within 1 day)
@@ -691,6 +701,21 @@ function rtCheckDuplicate(data) {
             rowDate && Math.abs(rowDate - inputDate) <= 86400000) { // 1 day
           isMatch = true;
           matchReason = 'Same source, amount, and date (±1 day)';
+        }
+      }
+      
+      // Fallback: same amount + same source (no date required)
+      if (!isMatch && data.amountClaimed && data.source) {
+        const rowSource = row[idx['Source']];
+        const rowAmount = parseFloat(row[idx['AmountClaimed']]) || 0;
+        const rowDesc = (row[idx['Description']] || '').toLowerCase();
+        const inputDesc = (data.description || '').toLowerCase();
+        
+        if (rowSource === data.source && 
+            Math.abs(rowAmount - parseFloat(data.amountClaimed)) < 0.01 &&
+            inputDesc && rowDesc && rowDesc === inputDesc) {
+          isMatch = true;
+          matchReason = 'Same source, amount, and description';
         }
       }
       

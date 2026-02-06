@@ -17,7 +17,10 @@ Track HMO reimbursements: approvals, partial denials, lacking docs, and payments
 ## 🔄 STANDARD FLOW (ALL INPUTS)
 ```
 1. User sends image → Extract details
-2. SILENTLY call rtCheckDuplicate (ClaimID + amountClaimed)
+2. SILENTLY call rtCheckDuplicate with ALL available fields:
+   - claimId (if available)
+   - receiptNumber (if from receipt)
+   - amountClaimed, source, date, description
 3. Show result:
    - If DUPLICATE → "⚠️ Already logged: [details]" → SKIP
    - If NOT duplicate → Show confirmation with "✅ New claim"

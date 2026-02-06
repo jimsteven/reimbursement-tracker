@@ -669,7 +669,18 @@ function rtAddReferenceItem(data) {
 }
 
 /**
- * Initialize the BenefitLimits sheet with default annual limits
+ * Build period-aware Used formula for BenefitLimits
+ * Filters Reimbursements by PurchaseDate based on Period (monthly/quarterly/annual)
+ */
+function rtBenefitUsedFormula(rowNum) {
+  // PurchaseDate is column O in Reimbursements
+  var startDate = 'IF(D' + rowNum + '="monthly",DATE(YEAR(TODAY()),MONTH(TODAY()),1),IF(D' + rowNum + '="quarterly",DATE(YEAR(TODAY()),INT((MONTH(TODAY())-1)/3)*3+1,1),DATE(YEAR(TODAY()),1,1)))';
+  var endDate = 'IF(D' + rowNum + '="monthly",DATE(YEAR(TODAY()),MONTH(TODAY())+1,1),IF(D' + rowNum + '="quarterly",DATE(YEAR(TODAY()),INT((MONTH(TODAY())-1)/3)*3+4,1),DATE(YEAR(TODAY())+1,1,1)))';
+  return '=SUMIFS(Reimbursements!I:I,Reimbursements!D:D,A' + rowNum + ',Reimbursements!K:K,"approved",Reimbursements!O:O,">="&' + startDate + ',Reimbursements!O:O,"<"&' + endDate + ')+SUMIFS(Reimbursements!I:I,Reimbursements!D:D,A' + rowNum + ',Reimbursements!K:K,"paid",Reimbursements!O:O,">="&' + startDate + ',Reimbursements!O:O,"<"&' + endDate + ')';
+}
+
+/**
+ * Initialize the BenefitLimits sheet with default limits
  * Columns: BenefitType, DisplayName, Limit, Period, Used (formula), Remaining (formula)
  */
 function rtInitializeBenefitLimits(forceReset) {
@@ -711,14 +722,8 @@ function rtInitializeBenefitLimits(forceReset) {
         const rowNum = i + 2;
         const bt = benefitTypes[i];
         sheet.getRange(rowNum, 1, 1, 4).setValues([[bt[0], bt[1], bt[2], bt[3]]]);
-        // Used = SUM of AmountApproved where BenefitType matches AND status is approved or paid
-        sheet.getRange(rowNum, 5).setFormula(
-          '=SUMIFS(Reimbursements!I:I,Reimbursements!D:D,A' + rowNum + ',Reimbursements!K:K,"approved")+SUMIFS(Reimbursements!I:I,Reimbursements!D:D,A' + rowNum + ',Reimbursements!K:K,"paid")'
-        );
-        // Remaining = Limit - Used (blank if no limit set)
-        sheet.getRange(rowNum, 6).setFormula(
-          '=IF(C' + rowNum + '>0,C' + rowNum + '-E' + rowNum + ',"")'
-        );
+        sheet.getRange(rowNum, 5).setFormula(rtBenefitUsedFormula(rowNum));
+        sheet.getRange(rowNum, 6).setFormula('=IF(C' + rowNum + '>0,C' + rowNum + '-E' + rowNum + ',"")');
       }
       
       // Format currency columns
@@ -768,14 +773,9 @@ function rtAddBenefitLimit(data) {
       parseFloat(data.annualLimit) || 0,
       data.period || 'annual'
     ]]);
-    // Used formula
-    sheet.getRange(rowNum, 5).setFormula(
-      '=SUMIFS(Reimbursements!I:I,Reimbursements!D:D,A' + rowNum + ',Reimbursements!K:K,"approved")+SUMIFS(Reimbursements!I:I,Reimbursements!D:D,A' + rowNum + ',Reimbursements!K:K,"paid")'
-    );
-    // Remaining formula
-    sheet.getRange(rowNum, 6).setFormula(
-      '=IF(C' + rowNum + '>0,C' + rowNum + '-E' + rowNum + ',"")'
-    );
+    sheet.getRange(rowNum, 5).setFormula(rtBenefitUsedFormula(rowNum));
+    sheet.getRange(rowNum, 6).setFormula('=IF(C' + rowNum + '>0,C' + rowNum + '-E' + rowNum + ',"")');
+
     // Format
     sheet.getRange(rowNum, 3).setNumberFormat('#,##0.00');
     sheet.getRange(rowNum, 5, 1, 2).setNumberFormat('#,##0.00');

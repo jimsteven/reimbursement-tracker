@@ -1,0 +1,366 @@
+openapi: 3.1.0
+info:
+  title: ReimbursementTracker API
+  description: FREE standalone reimbursement tracking API. Track HMO claims with fixed benefit types. Supports 4 input types (receipt, app screenshot, email, bank screenshot), silent duplicate detection, and payment tracking.
+  version: 1.4.0
+
+servers:
+  - url: https://script.google.com/macros/s/AKfycbw7BOmUd6Erm8wlU1oVd1_y7mTQx7LACKj2duN2jdkZo6LuvMDPQ4QZg10SzFfN_hlRuA
+    description: ReimbursementTracker Standalone API v1.4.0
+
+paths:
+  /exec:
+    get:
+      operationId: reimbursementTrackerAPI
+      summary: ReimbursementTracker unified API endpoint
+      description: |
+        IMPORTANT FLOW:
+        1. ALWAYS call rtCheckDuplicate FIRST (silently) after extracting data
+        2. If duplicate found → show "Already logged" and SKIP
+        3. If not duplicate → show confirmation with "✅ New claim"
+        4. After user confirms → call rtAddReimbursement
+      parameters:
+        - name: action
+          in: query
+          required: true
+          schema:
+            type: string
+            enum:
+              - rtCheckDuplicate
+              - rtAddReimbursement
+              - rtListReimbursements
+              - rtUpdateStatus
+              - rtGetSummary
+              - rtPing
+          description: |
+            Actions in typical order:
+            1. rtCheckDuplicate - CALL FIRST (silently)
+            2. rtAddReimbursement - Log new claim
+            3. rtListReimbursements - Find approved claims for bank matching
+            4. rtUpdateStatus - Mark as paid
+            5. rtGetSummary - View totals
+
+        # rtCheckDuplicate / rtAddReimbursement parameters
+        - name: claimId
+          in: query
+          schema:
+            type: string
+          description: HMO claim reference number (e.g., 67-RM012606416A). REQUIRED for duplicate check.
+
+        - name: amountClaimed
+          in: query
+          schema:
+            type: number
+          description: Gross amount claimed. Used for duplicate matching.
+
+        - name: category
+          in: query
+          schema:
+            type: string
+            enum:
+              - hmo
+            default: hmo
+          description: Always "hmo" for this tracker
+
+        - name: source
+          in: query
+          schema:
+            type: string
+            default: Avega Managed Care
+          description: Source is always "Avega Managed Care"
+
+        - name: benefitType
+          in: query
+          schema:
+            type: string
+            enum:
+              - maternity_assistance
+              - medicine_reimbursement
+              - pet_support
+              - optical
+              - psychology_sessions
+              - dental_reimbursement
+          description: |
+            FIXED benefit types from ReimbursementBenefits sheet:
+            - maternity_assistance: Maternity Assistance
+            - medicine_reimbursement: Medicine (Confinement)
+            - pet_support: Pet Support Program
+            - optical: Optical Benefit
+            - psychology_sessions: Psychology Sessions
+            - dental_reimbursement: Dental (Provincial)
+
+        - name: claimType
+          in: query
+          schema:
+            type: string
+            enum:
+              - OT
+              - OL
+              - DP
+              - APE
+              - PS
+              - OP
+              - PY
+              - MT
+              - MR
+          description: |
+            HMO claim type code:
+            OT=Outpatient Treatment, OL=Outpatient Lab, DP=Dental,
+            APE=Annual Physical, PS=Pet Support, OP=Optical,
+            PY=Psychology, MT=Maternity, MR=Medicine Reimbursement
+
+        - name: description
+          in: query
+          schema:
+            type: string
+          description: What was purchased or expense description
+
+        - name: amountApproved
+          in: query
+          schema:
+            type: number
+          description: Amount approved (may differ from claimed)
+
+        - name: amountDisapproved
+          in: query
+          schema:
+            type: number
+          description: Amount denied/disapproved (for partial approvals)
+
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum:
+              - pending
+              - approved
+              - paid
+              - denied
+              - lacking
+          description: |
+            Status values:
+            - pending: Receipt submitted, awaiting review
+            - approved: Email received, awaiting payment
+            - paid: Bank credit received
+            - denied: Claim rejected
+            - lacking: Missing documents
+
+        - name: date
+          in: query
+          schema:
+            type: string
+            format: date
+          description: Purchase/receipt date YYYY-MM-DD
+
+        - name: submittedDate
+          in: query
+          schema:
+            type: string
+            format: date
+          description: Date Posted (when claim was submitted) YYYY-MM-DD
+
+        - name: approvedDate
+          in: query
+          schema:
+            type: string
+            format: date
+          description: Date Approved YYYY-MM-DD
+
+        - name: paidDate
+          in: query
+          schema:
+            type: string
+            format: date
+          description: Date payment was received (from bank screenshot) YYYY-MM-DD
+
+        - name: notes
+          in: query
+          schema:
+            type: string
+          description: Additional notes, remarks for partial denials
+
+        # rtUpdateStatus parameters
+        - name: reimbursementId
+          in: query
+          schema:
+            type: string
+          description: Reimbursement ID (ClaimID like 67-RM...)
+
+        # Filter parameters for rtListReimbursements and rtGetSummary
+        - name: dateFrom
+          in: query
+          schema:
+            type: string
+            format: date
+          description: Filter start date YYYY-MM-DD
+
+        - name: dateTo
+          in: query
+          schema:
+            type: string
+            format: date
+          description: Filter end date YYYY-MM-DD
+
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+          description: Max records to return
+
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            default: PurchaseDate
+          description: Field to sort by
+
+        - name: sortOrder
+          in: query
+          schema:
+            type: string
+            enum:
+              - asc
+              - desc
+            default: desc
+          description: Sort order
+
+      responses:
+        "200":
+          description: API response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    description: Whether the operation succeeded
+                  error:
+                    type: string
+                    description: Error message if success is false
+
+                  # rtCheckDuplicate response
+                  isDuplicate:
+                    type: boolean
+                    description: True if duplicate claim detected
+                  duplicateCount:
+                    type: integer
+                    description: Number of matching duplicates
+                  duplicates:
+                    type: array
+                    description: List of matching existing claims
+                    items:
+                      type: object
+                      properties:
+                        reimbursementId:
+                          type: string
+                        claimId:
+                          type: string
+                        status:
+                          type: string
+                        benefitType:
+                          type: string
+                        amountApproved:
+                          type: number
+                        matchReason:
+                          type: string
+
+                  # rtAddReimbursement response
+                  reimbursementId:
+                    type: string
+                    description: Generated reimbursement ID (ClaimID)
+                  message:
+                    type: string
+                    description: Success message
+                  benefitType:
+                    type: string
+                  claimType:
+                    type: string
+                  claimId:
+                    type: string
+                  amountClaimed:
+                    type: number
+                  amountApproved:
+                    type: number
+                  amountDisapproved:
+                    type: number
+                  status:
+                    type: string
+
+                  # rtGetSummary response
+                  summary:
+                    type: object
+                    properties:
+                      totalClaimed:
+                        type: number
+                      totalApproved:
+                        type: number
+                      totalPaid:
+                        type: number
+                      totalPending:
+                        type: number
+                      count:
+                        type: integer
+                  byBenefitType:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        benefitType:
+                          type: string
+                        claimed:
+                          type: number
+                        approved:
+                          type: number
+                        paid:
+                          type: number
+                        count:
+                          type: integer
+
+                  # rtUpdateStatus response
+                  newStatus:
+                    type: string
+                    description: Updated status value
+                  paidDate:
+                    type: string
+                    description: Payment date if marked as paid
+
+                  # rtListReimbursements response
+                  reimbursements:
+                    type: array
+                    description: List of reimbursement records
+                    items:
+                      type: object
+                      properties:
+                        reimbursementId:
+                          type: string
+                        benefitType:
+                          type: string
+                        claimId:
+                          type: string
+                        claimType:
+                          type: string
+                        description:
+                          type: string
+                        amountClaimed:
+                          type: number
+                        amountApproved:
+                          type: number
+                        amountDisapproved:
+                          type: number
+                        status:
+                          type: string
+                        purchaseDate:
+                          type: string
+                        submittedDate:
+                          type: string
+                        approvedDate:
+                          type: string
+                        paidDate:
+                          type: string
+                        notes:
+                          type: string
+                  count:
+                    type: integer
+                    description: Number of records returned

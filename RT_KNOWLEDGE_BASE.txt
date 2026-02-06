@@ -1,0 +1,304 @@
+# ReimbursementTracker Knowledge Base
+# Complete reference for the FREE reimbursement tracking GPT
+# Version: 1.4.0
+
+================================================================================
+## FIXED BENEFIT TYPES (from ReimbursementBenefits sheet)
+================================================================================
+
+| benefitType | Display Name | Limit | Period |
+|-------------|--------------|-------|--------|
+| maternity_assistance | Maternity Assistance | ₱50,000 | yearly |
+| medicine_reimbursement | Medicine (Confinement) | varies | yearly |
+| pet_support | Pet Support Program | ₱5,000 | quarterly |
+| optical | Optical Benefit | ₱7,000 | yearly |
+| psychology_sessions | Psychology Sessions | ₱20,000 | yearly |
+| dental_reimbursement | Dental (Provincial) | varies | yearly |
+
+⚠️ ALWAYS use these exact benefitType values - they are constants from the sheet.
+
+================================================================================
+## REIMBURSEMENTS SHEET SCHEMA (v1.4)
+================================================================================
+
+| Column | Type | Required | Description |
+|--------|------|----------|-------------|
+| ReimbursementID | string | Auto | Unique ID (ClaimID if HMO, else R-timestamp) |
+| Category | enum | Yes | hmo, business, client, personal, other |
+| Source | string | Yes | Who reimburses (Avega Managed Care) |
+| BenefitType | string | Yes | FIXED values from ReimbursementBenefits sheet |
+| ClaimType | string | No | HMO claim codes: OT, OL, DP, APE, PS, etc. |
+| ClaimID | string | No | HMO reference number (67-RM012606416A) |
+| Description | string | Yes | What was purchased/claimed |
+| AmountClaimed | number | Yes | Gross amount submitted |
+| AmountApproved | number | No | Amount approved (may differ from claimed) |
+| AmountDisapproved | number | No | Amount denied (for partial approvals) |
+| Status | enum | Yes | pending, approved, paid, denied, lacking |
+| SubmittedDate | date | Auto | When claim was submitted (Date Posted) |
+| ApprovedDate | date | No | When claim was approved |
+| PaidDate | date | No | When payment was received (from bank) |
+| PurchaseDate | date | Yes | Original purchase/service date |
+| Notes | string | No | Additional notes, remarks |
+| CreatedAt | datetime | Auto | Record creation timestamp |
+| UpdatedAt | datetime | Auto | Last update timestamp |
+
+================================================================================
+## HMO CLAIM TYPE CODES
+================================================================================
+
+| Code | Full Name | Maps to BenefitType |
+|------|-----------|---------------------|
+| OT | Outpatient Treatment | medicine_reimbursement |
+| OL | Outpatient Lab | medicine_reimbursement |
+| DP | Dental Procedure | dental_reimbursement |
+| APE | Annual Physical Exam | medicine_reimbursement |
+| PS | Pet Support | pet_support |
+| OP | Optical | optical |
+| PY | Psychology | psychology_sessions |
+| MT | Maternity | maternity_assistance |
+| MR | Medicine Reimbursement | medicine_reimbursement |
+
+================================================================================
+## STATUS VALUES
+================================================================================
+
+| Status | Description | Trigger | Color |
+|--------|-------------|---------|-------|
+| pending | Claim submitted, awaiting review | Receipt/App screenshot | 🟡 |
+| approved | Claim approved, awaiting payment | Email notification | 🟢 |
+| paid | Payment received | Bank screenshot | 🔵 |
+| denied | Claim rejected | Email/App screenshot | 🔴 |
+| lacking | Missing documents | App screenshot | 🟠 |
+
+================================================================================
+## 4 INPUT TYPES
+================================================================================
+
+### Priority Order:
+1. 📧 HMO Email - Highest priority for approvals
+2. 📱 App Screenshot - Shows all statuses, has ClaimID
+3. 🧾 Receipt - Least preferred (no ClaimID)
+4. 🏦 Bank Screenshot - For marking as paid
+
+### Best Practice:
+Submit receipt in Avega app FIRST, then send the app screenshot.
+This gives ClaimID upfront!
+
+### Input Type Details:
+
+**🧾 RECEIPT**
+- Creates: status=pending, NO ClaimID
+- Encourage user to submit in app first
+
+**📱 APP SCREENSHOT**
+- Shows: ClaimID, status (pending/approved/denied/lacking)
+- Has: Date Posted, Date Approved, amounts
+- Check duplicates first!
+
+**📧 HMO EMAIL**
+- Priority over app screenshot for approvals
+- Contains: ClaimID, ClaimType, amounts, remarks
+- Source: Avega Managed Care Inc.
+
+**🏦 BANK SCREENSHOT**
+- Shows: "Inward Remittance" with amount and date
+- Match to approved claims, mark as paid
+
+================================================================================
+## STANDARD FLOW (ALL INPUTS)
+================================================================================
+
+1. User sends image → Extract details (ClaimID, amounts, etc.)
+2. SILENTLY call rtCheckDuplicate (ClaimID + amountClaimed)
+3. Show result:
+   - If DUPLICATE → "⚠️ Already logged: [details]" → SKIP
+   - If NOT duplicate → Show confirmation with "✅ New claim"
+4. After user says "ok" → rtAddReimbursement
+5. Show "✅ LOGGED: [ClaimID]"
+
+================================================================================
+## API REFERENCE
+================================================================================
+
+### rtCheckDuplicate (CALL FIRST - SILENTLY)
+Check if claim exists before showing confirmation.
+
+**Parameters:**
+- claimId (string): HMO claim ID (67-RM...)
+- amountClaimed (number): Gross amount
+
+**Response:**
+```json
+{
+  "success": true,
+  "isDuplicate": true,
+  "duplicateCount": 1,
+  "duplicates": [{
+    "reimbursementId": "67-RM012606416A",
+    "claimId": "67-RM012606416A",
+    "status": "approved",
+    "amountApproved": 1299,
+    "benefitType": "medicine_reimbursement",
+    "matchReason": "Same ClaimID"
+  }]
+}
+```
+
+### rtAddReimbursement
+Creates a new reimbursement record.
+
+**Required Parameters:**
+- category (string): hmo
+- source (string): "Avega Managed Care"
+- benefitType (string): FIXED value from list above
+- description (string): What was claimed
+- amountClaimed (number): Gross amount
+- date (string): Purchase/service date YYYY-MM-DD
+
+**HMO-Specific Parameters:**
+- claimType (string): OT, OL, DP, APE, PS, etc.
+- claimId (string): HMO reference number (67-RM...)
+- amountApproved (number): Approved amount
+- amountDisapproved (number): Denied amount
+- status (string): pending, approved, denied, lacking
+- submittedDate (string): Date Posted YYYY-MM-DD
+- approvedDate (string): Date Approved YYYY-MM-DD
+
+**Response:**
+```json
+{
+  "success": true,
+  "reimbursementId": "67-RM012606416A",
+  "status": "approved",
+  "message": "Reimbursement added successfully",
+  "benefitType": "pet_support",
+  "amountClaimed": 560,
+  "amountApproved": 370,
+  "amountDisapproved": 190
+}
+```
+
+### rtListReimbursements
+Lists reimbursements with optional filters.
+
+**Optional Parameters:**
+- status (string): Filter by status (use "approved" for bank matching)
+- benefitType (string): Filter by benefit type
+- limit (integer): Max records (default 20)
+
+**Response includes:** reimbursementId, benefitType, claimId, description,
+amountClaimed, amountApproved, amountDisapproved, status, dates
+
+### rtUpdateStatus
+Updates the status of a reimbursement.
+
+**Required Parameters:**
+- reimbursementId (string): The ClaimID (67-RM...)
+- status (string): New status (usually "paid")
+
+**Optional Parameters:**
+- paidDate (string): When payment received YYYY-MM-DD
+- amountApproved (number): If amount changed
+- notes (string): Additional notes
+
+### rtGetSummary
+Gets summary totals with optional filters.
+
+**Optional Parameters:**
+- status (string): Filter by status
+- benefitType (string): Filter by benefit type
+- dateFrom, dateTo (string): Date range
+
+**Response:**
+```json
+{
+  "success": true,
+  "summary": {
+    "totalClaimed": 15000,
+    "totalApproved": 12000,
+    "totalPaid": 10000,
+    "totalPending": 3000,
+    "count": 12
+  },
+  "byBenefitType": [...]
+}
+```
+
+================================================================================
+## EXAMPLE SCENARIOS
+================================================================================
+
+### Scenario 1: App Screenshot - New Approved Claim
+User sends screenshot showing:
+- Reference No: 67-RM012606416A
+- Status: APPROVED
+- Gross Amount: ₱1,299.00
+- Approved Amount: ₱1,299.00
+
+Flow:
+1. Extract details
+2. Call rtCheckDuplicate → isDuplicate: false
+3. Show: "📋 CONFIRM: ✅ New claim..."
+4. User: "ok"
+5. Call rtAddReimbursement
+
+### Scenario 2: App Screenshot - Duplicate Found
+User sends same screenshot again:
+
+Flow:
+1. Extract details
+2. Call rtCheckDuplicate → isDuplicate: true
+3. Show: "⚠️ ALREADY LOGGED - Skipping
+   🆔 67-RM012606416A | 📊 Status: approved | 💰 ₱1,299"
+4. SKIP - no further action
+
+### Scenario 3: Email - Partial Approval
+Email shows:
+- Claim Type: OL
+- Gross: ₱560.00
+- Disapproved: ₱190.00
+- Approved Net: ₱370.00
+- Remarks: "Collar not covered"
+
+→ Call rtAddReimbursement with:
+- benefitType: "pet_support"
+- amountClaimed: 560
+- amountApproved: 370
+- amountDisapproved: 190
+- notes: "Collar not covered under pet support"
+
+### Scenario 4: Bank Screenshot - Mark as Paid
+User sends bank screenshot showing:
+- "Inward Remittance"
+- ₱3,170.00
+- Feb 03, 2026
+
+Flow:
+1. Call rtListReimbursements with status=approved
+2. Find claims totaling ₱3,170
+3. Show matches, ask user to confirm
+4. Call rtUpdateStatus for each with status=paid, paidDate=2026-02-03
+
+### Scenario 5: Lacking Status
+App screenshot shows Status: LACKING
+
+→ Log with status: "lacking", add notes about missing documents
+
+================================================================================
+## VERSION HISTORY
+================================================================================
+
+v1.4.0 (2026-02-05)
+- 4 input types: Receipt, App Screenshot, Email, Bank Screenshot
+- Silent duplicate checking before confirmation
+- Fixed BenefitTypes from ReimbursementBenefits sheet
+- Bank screenshot flow for marking claims as paid
+- Priority: Email > App Screenshot for approvals
+
+v1.3.2
+- Added ClaimType, ClaimID, AmountDisapproved columns
+- HMO claim type codes
+- Duplicate detection
+
+v1.0.0
+- Initial release

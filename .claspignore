@@ -1,0 +1,5 @@
+# Ignore GPT files (not Apps Script)
+RT_INSTRUCTIONS.md
+RT_KNOWLEDGE_BASE.txt
+rt_openapi.yaml
+README.md

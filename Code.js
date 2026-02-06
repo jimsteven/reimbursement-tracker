@@ -430,7 +430,7 @@ function handleAction(params) {
         result = rtUpdateBenefitLimit(data);
         break;
       case 'rtInitBenefitLimits':
-        result = rtInitializeBenefitLimits();
+        result = rtInitializeBenefitLimits(data.reset === 'true' || data.reset === true);
         break;
       case 'rtAddBenefitLimit':
         result = rtAddBenefitLimit(data);
@@ -672,10 +672,16 @@ function rtAddReferenceItem(data) {
  * Initialize the BenefitLimits sheet with default annual limits
  * Columns: BenefitType, DisplayName, AnnualLimit, Period, Used (formula), Remaining (formula)
  */
-function rtInitializeBenefitLimits() {
+function rtInitializeBenefitLimits(forceReset) {
   try {
     const ss = getSpreadsheet();
     let sheet = ss.getSheetByName('BenefitLimits');
+    
+    // Delete and recreate if force reset
+    if (sheet && forceReset) {
+      ss.deleteSheet(sheet);
+      sheet = null;
+    }
     
     if (!sheet) {
       sheet = ss.insertSheet('BenefitLimits');

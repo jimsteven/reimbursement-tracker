@@ -689,33 +689,39 @@ function rtCheckDuplicate(data) {
         }
       }
       
-      // Fuzzy match: same source + amount + date (within 1 day)
-      if (!isMatch && data.source && data.amountClaimed && data.date) {
-        const rowSource = row[idx['Source']];
-        const rowAmount = parseFloat(row[idx['AmountClaimed']]) || 0;
-        const rowDate = row[idx['PurchaseDate']] ? new Date(row[idx['PurchaseDate']]) : null;
-        const inputDate = new Date(data.date);
-        
-        if (rowSource === data.source && 
-            Math.abs(rowAmount - parseFloat(data.amountClaimed)) < 0.01 &&
-            rowDate && Math.abs(rowDate - inputDate) <= 86400000) { // 1 day
-          isMatch = true;
-          matchReason = 'Same source, amount, and date (±1 day)';
-        }
-      }
-      
-      // Fallback: same amount + same source (no date required)
+      // Quarterly match: pending + same amount + same source + same quarter
+      // Quarters: Jan-Mar (Q1), Apr-Jun (Q2), Jul-Sep (Q3), Oct-Dec (Q4)
       if (!isMatch && data.amountClaimed && data.source) {
         const rowSource = row[idx['Source']];
         const rowAmount = parseFloat(row[idx['AmountClaimed']]) || 0;
+        const rowStatus = row[idx['Status']];
+        const rowDate = row[idx['PurchaseDate']] ? new Date(row[idx['PurchaseDate']]) : null;
+        const inputDate = data.date ? new Date(data.date) : null;
+        
+        const amountMatch = Math.abs(rowAmount - parseFloat(data.amountClaimed)) < 0.01;
+        const sourceMatch = rowSource === data.source;
+        const isPending = rowStatus === 'pending';
+        
+        // Check if both dates fall in the same quarter
+        let sameQuarter = false;
+        if (rowDate && inputDate) {
+          const rowQ = Math.floor(rowDate.getMonth() / 3);
+          const inputQ = Math.floor(inputDate.getMonth() / 3);
+          sameQuarter = rowQ === inputQ && rowDate.getFullYear() === inputDate.getFullYear();
+        }
+        
+        // Provider/description bonus (optional, adds confidence)
         const rowDesc = (row[idx['Description']] || '').toLowerCase();
         const inputDesc = (data.description || '').toLowerCase();
+        const descMatch = inputDesc && rowDesc && (
+          rowDesc.includes(inputDesc) || inputDesc.includes(rowDesc) ||
+          rowDesc === inputDesc
+        );
         
-        if (rowSource === data.source && 
-            Math.abs(rowAmount - parseFloat(data.amountClaimed)) < 0.01 &&
-            inputDesc && rowDesc && rowDesc === inputDesc) {
+        if (amountMatch && sourceMatch && isPending && sameQuarter) {
           isMatch = true;
-          matchReason = 'Same source, amount, and description';
+          matchReason = 'Same source + amount + pending + same quarter' + 
+            (descMatch ? ' + description match' : '');
         }
       }
       

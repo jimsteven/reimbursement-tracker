@@ -33,6 +33,8 @@ const RT_VERSION = '1.5.0';
 function onOpen() {
   const ui = SpreadsheetApp.getUi();
   ui.createMenu('📋 ReimbursementTracker')
+    .addItem('🚀 Quick Setup (New Users)', 'menuQuickSetup')
+    .addSeparator()
     .addItem('🔧 Setup: Connect This Sheet', 'setupConnectSheet')
     .addItem('🔗 Setup: Connect to BudgetQuest', 'setupBudgetQuestIntegration')
     .addSeparator()
@@ -45,6 +47,55 @@ function onOpen() {
     .addSeparator()
     .addItem('ℹ️ View Configuration', 'menuShowConfig')
     .addToUi();
+}
+
+/**
+ * Menu: Quick Setup for new users - initializes everything
+ */
+function menuQuickSetup() {
+  const ui = SpreadsheetApp.getUi();
+  
+  const confirm = ui.alert(
+    '🚀 Quick Setup',
+    'This will set up ReimbursementTracker with:\n\n' +
+    '1. Connect this spreadsheet to the API\n' +
+    '2. Create Reimbursements sheet (tracks claims)\n' +
+    '3. Create ReferenceData sheet (benefit types, claim types)\n' +
+    '4. Create BenefitLimits sheet (usage tracking)\n\n' +
+    'Continue?',
+    ui.ButtonSet.YES_NO
+  );
+  
+  if (confirm !== ui.Button.YES) return;
+  
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheetId = ss.getId();
+  
+  // Step 1: Connect spreadsheet
+  setSpreadsheetId(sheetId);
+  
+  // Step 2: Initialize all sheets
+  const results = [];
+  results.push('📊 Reimbursements: ' + (rtInitializeSheet().success ? '✅' : '❌'));
+  results.push('📚 ReferenceData: ' + (rtInitializeReferenceData().success ? '✅' : '❌'));
+  results.push('💰 BenefitLimits: ' + (rtInitializeBenefitLimits().success ? '✅' : '❌'));
+  
+  ui.alert(
+    '✅ Setup Complete!',
+    'ReimbursementTracker is ready!\n\n' +
+    results.join('\n') + '\n\n' +
+    'NEXT STEPS:\n' +
+    '1. Deploy as web app:\n' +
+    '   Extensions → Apps Script → Deploy → Web app\n' +
+    '   Set "Who has access" to "Anyone"\n\n' +
+    '2. Copy the deployment URL\n\n' +
+    '3. Create your Custom GPT at chat.openai.com:\n' +
+    '   - Use RT_INSTRUCTIONS.md for instructions\n' +
+    '   - Use rt_openapi.yaml for Actions (update the URL)\n' +
+    '   - Upload RT_KNOWLEDGE_BASE.txt as knowledge\n\n' +
+    '4. Set your benefit limits in the BenefitLimits sheet',
+    ui.ButtonSet.OK
+  );
 }
 
 /**

@@ -39,6 +39,7 @@ function onOpen() {
     .addItem('📊 Initialize Reimbursements Sheet', 'menuInitializeSheet')
     .addItem('📚 Initialize Reference Data', 'menuInitializeReferenceData')
     .addItem('💰 Initialize Benefit Limits', 'menuInitializeBenefitLimits')
+    .addItem('➕ Add Benefit Type to Limits', 'menuAddBenefitLimit')
     .addItem('🔄 Migrate to v1.2 Schema', 'menuMigrateToV12')
     .addItem('📈 View Summary', 'menuShowSummary')
     .addSeparator()
@@ -172,6 +173,34 @@ function menuInitializeBenefitLimits() {
     ui.alert('✅ ' + result.message, ui.ButtonSet.OK);
   } else {
     ui.alert('❌ Error: ' + result.error, ui.ButtonSet.OK);
+  }
+}
+
+/**
+ * Menu: Add a new benefit type to BenefitLimits
+ */
+function menuAddBenefitLimit() {
+  const ui = SpreadsheetApp.getUi();
+  
+  const typeResp = ui.prompt('➕ Add Benefit Type', 'Enter benefit type key (e.g., dental_reimbursement):', ui.ButtonSet.OK_CANCEL);
+  if (typeResp.getSelectedButton() !== ui.Button.OK) return;
+  const benefitType = typeResp.getResponseText().trim();
+  if (!benefitType) { ui.alert('No benefit type entered.', ui.ButtonSet.OK); return; }
+  
+  const nameResp = ui.prompt('Display Name', 'Enter display name (e.g., Dental Provincial):', ui.ButtonSet.OK_CANCEL);
+  if (nameResp.getSelectedButton() !== ui.Button.OK) return;
+  const displayName = nameResp.getResponseText().trim() || benefitType;
+  
+  const limitResp = ui.prompt('Annual Limit', 'Enter annual limit amount (e.g., 5000):', ui.ButtonSet.OK_CANCEL);
+  if (limitResp.getSelectedButton() !== ui.Button.OK) return;
+  const annualLimit = parseFloat(limitResp.getResponseText().trim()) || 0;
+  
+  const result = rtAddBenefitLimit({ benefitType: benefitType, displayName: displayName, annualLimit: annualLimit });
+  
+  if (result.success) {
+    ui.alert('✅ ' + result.message, ui.ButtonSet.OK);
+  } else {
+    ui.alert('❌ ' + result.error, ui.ButtonSet.OK);
   }
 }
 
@@ -402,6 +431,9 @@ function handleAction(params) {
         break;
       case 'rtInitBenefitLimits':
         result = rtInitializeBenefitLimits();
+        break;
+      case 'rtAddBenefitLimit':
+        result = rtAddBenefitLimit(data);
         break;
       default:
         result = { success: false, error: 'Unknown action: ' + action };
@@ -638,6 +670,7 @@ function rtAddReferenceItem(data) {
 
 /**
  * Initialize the BenefitLimits sheet with default annual limits
+ * Columns: BenefitType, DisplayName, AnnualLimit, Period, Used (formula), Remaining (formula)
  */
 function rtInitializeBenefitLimits() {
   try {
@@ -648,31 +681,107 @@ function rtInitializeBenefitLimits() {
       sheet = ss.insertSheet('BenefitLimits');
     }
     
-    const headers = ['BenefitType', 'DisplayName', 'AnnualLimit', 'Period', 'Notes'];
+    const headers = ['BenefitType', 'DisplayName', 'AnnualLimit', 'Period', 'Used', 'Remaining'];
     
     if (sheet.getLastRow() === 0 || sheet.getLastRow() === 1) {
       sheet.clear();
       
-      const data = [
-        headers,
-        ['maternity_assistance', 'Maternity Assistance', 0, 'annual', 'Set your limit'],
-        ['medicine_reimbursement', 'Medicine (Confinement)', 0, 'annual', 'Set your limit'],
-        ['pet_support', 'Pet Support Program', 0, 'annual', 'Set your limit'],
-        ['optical', 'Optical Benefit', 0, 'annual', 'Set your limit'],
-        ['psychology_sessions', 'Psychology Sessions', 0, 'annual', 'Set your limit'],
-        ['dental_reimbursement', 'Dental (Provincial)', 0, 'annual', 'Set your limit']
+      const benefitTypes = [
+        ['maternity_assistance', 'Maternity Assistance', 0, 'annual'],
+        ['medicine_reimbursement', 'Medicine (Confinement)', 0, 'annual'],
+        ['pet_support', 'Pet Support Program', 0, 'annual'],
+        ['optical', 'Optical Benefit', 0, 'annual'],
+        ['psychology_sessions', 'Psychology Sessions', 0, 'annual'],
+        ['dental_reimbursement', 'Dental (Provincial)', 0, 'annual']
       ];
       
-      sheet.getRange(1, 1, data.length, headers.length).setValues(data);
+      // Write headers
+      sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
       sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold');
       sheet.setFrozenRows(1);
       
-      return { success: true, message: 'BenefitLimits sheet initialized with ' + (data.length - 1) + ' benefit types. Update the AnnualLimit column with your actual limits.' };
+      // Write data rows with formulas
+      for (let i = 0; i < benefitTypes.length; i++) {
+        const rowNum = i + 2;
+        const bt = benefitTypes[i];
+        sheet.getRange(rowNum, 1, 1, 4).setValues([[bt[0], bt[1], bt[2], bt[3]]]);
+        // Used = SUM of AmountApproved where BenefitType matches AND status is approved or paid
+        sheet.getRange(rowNum, 5).setFormula(
+          '=SUMIFS(Reimbursements!I:I,Reimbursements!D:D,A' + rowNum + ',Reimbursements!K:K,"approved")+SUMIFS(Reimbursements!I:I,Reimbursements!D:D,A' + rowNum + ',Reimbursements!K:K,"paid")'
+        );
+        // Remaining = AnnualLimit - Used (blank if no limit set)
+        sheet.getRange(rowNum, 6).setFormula(
+          '=IF(C' + rowNum + '>0,C' + rowNum + '-E' + rowNum + ',"")'
+        );
+      }
+      
+      // Format currency columns
+      sheet.getRange(2, 3, benefitTypes.length, 1).setNumberFormat('#,##0.00');
+      sheet.getRange(2, 5, benefitTypes.length, 2).setNumberFormat('#,##0.00');
+      
+      return { success: true, message: 'BenefitLimits sheet initialized with ' + benefitTypes.length + ' benefit types. Update the AnnualLimit column (C) with your actual limits.' };
     }
     
     return { success: true, message: 'BenefitLimits sheet already exists with data' };
   } catch (error) {
     console.error('rtInitializeBenefitLimits error:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Add a new benefit type row to BenefitLimits with formulas
+ */
+function rtAddBenefitLimit(data) {
+  try {
+    if (!data.benefitType) {
+      return { success: false, error: 'benefitType is required' };
+    }
+    
+    const ss = getSpreadsheet();
+    let sheet = ss.getSheetByName('BenefitLimits');
+    
+    if (!sheet) {
+      const initResult = rtInitializeBenefitLimits();
+      if (!initResult.success) return initResult;
+      sheet = ss.getSheetByName('BenefitLimits');
+    }
+    
+    // Check for duplicates
+    const allData = sheet.getDataRange().getValues();
+    for (let i = 1; i < allData.length; i++) {
+      if (allData[i][0] === data.benefitType) {
+        return { success: false, error: 'BenefitType already exists: ' + data.benefitType };
+      }
+    }
+    
+    const rowNum = sheet.getLastRow() + 1;
+    sheet.getRange(rowNum, 1, 1, 4).setValues([[
+      data.benefitType,
+      data.displayName || data.benefitType,
+      parseFloat(data.annualLimit) || 0,
+      data.period || 'annual'
+    ]]);
+    // Used formula
+    sheet.getRange(rowNum, 5).setFormula(
+      '=SUMIFS(Reimbursements!I:I,Reimbursements!D:D,A' + rowNum + ',Reimbursements!K:K,"approved")+SUMIFS(Reimbursements!I:I,Reimbursements!D:D,A' + rowNum + ',Reimbursements!K:K,"paid")'
+    );
+    // Remaining formula
+    sheet.getRange(rowNum, 6).setFormula(
+      '=IF(C' + rowNum + '>0,C' + rowNum + '-E' + rowNum + ',"")'
+    );
+    // Format
+    sheet.getRange(rowNum, 3).setNumberFormat('#,##0.00');
+    sheet.getRange(rowNum, 5, 1, 2).setNumberFormat('#,##0.00');
+    
+    return {
+      success: true,
+      benefitType: data.benefitType,
+      annualLimit: parseFloat(data.annualLimit) || 0,
+      message: data.benefitType + ' added to BenefitLimits with limit ₱' + (parseFloat(data.annualLimit) || 0)
+    };
+  } catch (error) {
+    console.error('rtAddBenefitLimit error:', error);
     return { success: false, error: error.message };
   }
 }
@@ -708,8 +817,7 @@ function rtGetBenefitUsage(data) {
         benefitType: benefitType,
         displayName: row[limitsIdx['DisplayName']] || benefitType,
         annualLimit: parseFloat(row[limitsIdx['AnnualLimit']]) || 0,
-        period: row[limitsIdx['Period']] || 'annual',
-        notes: row[limitsIdx['Notes']] || ''
+        period: row[limitsIdx['Period']] || 'annual'
       };
     }
     
@@ -846,9 +954,6 @@ function rtUpdateBenefitLimit(data) {
       if (allData[i][idx['BenefitType']] === data.benefitType) {
         const rowNum = i + 1;
         sheet.getRange(rowNum, idx['AnnualLimit'] + 1).setValue(parseFloat(data.annualLimit) || 0);
-        if (data.notes) {
-          sheet.getRange(rowNum, idx['Notes'] + 1).setValue(data.notes);
-        }
         
         return {
           success: true,
